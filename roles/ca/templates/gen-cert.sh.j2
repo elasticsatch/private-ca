@@ -1,25 +1,30 @@
 #!/bin/bash
+
 program=$(basename $0)
 
 printUsage() {
   cat << EOF
 
   $program
-    Generate a Server Certificate PEM file using Self-signed CA
+    Generate a Server Certificate PEM file using Self-signed CA.
 
   Usage: 
     $program -c <name> [-i] [-p <prefix>] [-o <dir>]
 
   Options:
+    -i --interactive          Display prompt at important steps
     -c --common-name <name>   Common Name (CN) entry put in the CSR/CERT files.
-    -p --prefix <prefix>      Prefix for the output file name (e.g. "-p server" will produce "server.crt")
-                              when omitted common-name will be used.
+    -s --san <san>            The aliases to put togeter in the Subject Alternative Name (SAN) section of 
+                              the output certificate. Use comma without space to specify multiple values 
+                              (e.g. -s my-server,192.168.0.1)
+    -m --multi-domain         Enable multi-domain SAN (*.<common-name>)
+    -n --name <name>          A prefix of the output file (e.g. "-p server" will produce "server.crt")
+                              and a name of the PKCS#12 entry. Common-name will be used when omitted.
     -o --crtout <dir>         A directory the .csr file to be out. 
                               When omitted, CA's default folders will be used.
     -k --keyout <dir>         A directory the .key file to be out. 
                               When omitted, CA's default folders will be used.
-    -m --multi-domain         Enable multi-domain SAN (*.<common-name>)
-    -i --interactive          Display prompt at important steps
+    -p --pkcs12               Create PKCS#12 file along with the .crt and .key.
     -h --help                 Show this message.
 
 EOF
@@ -39,12 +44,14 @@ getDN() {
   readonly org="{{ ca_org }}"
   readonly ou="{{ ca_ou }}"
 
-  readonly dc=($(echo $1 | sed -e "s|\.| |g"))
-  {{ 'readonly dc_len=${#dc[*]}' }}
+{% raw %}
+  readonly dc=($(echo $1 | sed -e 's|\.| |g'))
+  readonly dc_len=${#dc[*]}
 
   for ((i = dc_len - 1; i > 1; i--)); do
     dc_param="/DC=${dc[i]}$dc_param"
   done
+{% endraw %}
 
   echo "$dc_param/CN=$opt_cn/O=$org/OU=$ou/ST=$state/L=$loc/C=$country" 
 }
@@ -56,7 +63,7 @@ cd $(dirname $0)
 opt_interactive=false
 opt_multidomain=false
 
-opt=$(getopt -o c:p:o:k:imh -l common-name:prefix:crtout:keyout:interactive,multi-domain,help, -- "$@" \
+opt=$(getopt -o c:n:s:o:k:pimh -l common-name:name:san:crtout:keyout:pkcs12:interactive,multi-domain,help, -- "$@" \
     | sed -e "s|^ *||g")
 eval set -- "$opt"
 
@@ -66,32 +73,38 @@ do
   case $1 in
     -c | --common-name)
       opt_cn=$2
-      shift 2 ;;
-    -p | --prefix)
-      opt_prefix=$2
-      shift 2 ;;
+      shift 2;;
+    -n | --name)
+      opt_name=$2
+      shift 2;;
     -o | --crtout)
       opt_crt_dir=$(echo $2 | sed -e "s|/$||g")
-      shift 2 ;;
+      shift 2;;
     -k | --keyout) 
       opt_key_dir=$(echo $2 | sed -e "s|/$||g")
-      shift 2 ;;
+      shift 2;;
+    -s | --san)
+      opt_san=$2
+      shift 2;;
+    -p | --pkcs12)
+      opt_pkcs12=true
+      shift;;
     -i | --interactive)
       opt_interactive=true
-      shift ;;
+      shift;;
     -m | --multi-domain)
       opt_multidomain=true
-      shift ;;
+      shift;;
     -h | --help)
       printUsage; exit 0;;
     --)
-      shift; break ;;
+      shift; break;;
     *)
-      exit1 "invalid option $1" ;;
+      exit1 "invalid option $1";;
   esac
 done
 
-# Exit if common name is not sett
+# Exit if common name is not set
 if [ -z $opt_cn ]; then 
   exit1 "common name must be specified. Aborting."
 fi
@@ -100,24 +113,23 @@ fi
 # The file name will be prefix + extension (e.g. .crt) if -p is specified.
 # Otherwise common name will be it, with replacing start to underscore.
 
-readonly prefix=${opt_prefix:-$(echo $opt_cn | sed -e "s|*|_|g")}
+readonly prefix=${opt_name:-$(echo $opt_cn | sed -e 's|[\* ]|_|g')}
 
 readonly crt_file="${opt_crt_dir:-$(pwd)/certs}/${prefix}.crt"
 readonly key_file="${opt_key_dir:-$(pwd)/private}/${prefix}.key"
 readonly keypass_file="$(pwd)/private/${prefix}.keypass"
 readonly csr_file="$(pwd)/tmp/${prefix}.csr"
 readonly ext_file="$(pwd)/tmp/${prefix}.ext"
+readonly pkcs12_file="${opt_crt_dir:-$(pwd)/certs}/${prefix}.p12"
 
-set
-
-if [[ $opt_interactive ]]; then
+if $opt_interactive; then
   cat <<EOL >&1
 
 Please confirm the following files will be created either temporarily or permanently.
 
   CERT: $crt_file
   KEY: $key_file 
-
+  $(if $opt_pkcs12; then echo "  PKCS12: $pkcs12_file"; else echo ""; fi)
 EOL
   read -p "Press Enter to continue (Ctrl-C to abort):"
 fi
@@ -126,11 +138,12 @@ fi
 
 # Generate random password
 printf "\n=> Create random password ..\n"
+
 openssl rand -base64 128 > $keypass_file
-chmod 600 $keypass_file
+chmod 644 $keypass_file
 
 # Generate CSR
-printf "\n==> Generate a server certificate request for $opt_cn"
+printf "\n==> Generate a server certificate request for $opt_cn\n"
 openssl req \
   -newkey rsa:2048 \
   -subj "$(getDN $opt_cn)" \
@@ -146,12 +159,12 @@ fi
 
 # Remove password from the key
 readonly key_tmp_file="${key_file}.tmp"
-mv -f "$key_file" "$key_tmp_file" && \
-  openssl rsa \
+mv -f "$key_file" "$key_tmp_file"
+openssl rsa \
     -in  $key_tmp_file \
     -out $key_file \
-    -passin file:$keypass_file && \
-  chmod 600 $key_file
+    -passin file:$keypass_file
+chmod 600 $key_file
 
 if [[ $? != 0 ]]; then exit 1; fi
 
@@ -174,8 +187,29 @@ subjectAltName = @san
 IP.0  = 127.0.0.1
 DNS.0 = localhost
 DNS.1 = $opt_cn
-$(if "$opt_multidomain"; then echo "DNS.2 = *.$opt_cn"; fi)
 EOL
+
+ip_seq=1
+dns_seq=2
+
+if [ ! -z "$opt_san" ]; then
+  echo $opt_san \
+    | awk -v RS=, '{ print $1 }' \
+    | while read -r alias
+      do
+        if [ ! -z $(echo $alias | grep -P '\d+(\.\d+){3}') ]; then
+          echo "IP.$ip_seq = $alias" >> $ext_file
+	  ip_seq=$((ip_seq + 1))
+	else
+          echo "DNS.$dns_seq = $alias" >> $ext_file
+	  dns_seq=$((dns_seq + 1))
+	fi
+      done
+fi
+
+if "$opt_multidomain"; then 
+  echo "DNS.$dns_seq = *.$opt_cn"
+fi
 
 # Sign the CSR
 printf "\n===> Signing the CSR ..\n"
@@ -191,11 +225,25 @@ openssl ca \
 
 if [[ $? != 0 ]]; then exit 1; fi
 
+# Convert or import the generated keypair into a PKCS12 file.
+printf "\n====> Create a PKCS12 file\n"
+
+if "$opt_pkcs12"; then
+  openssl pkcs12 \
+    -export \
+    -in $crt_file \
+    -inkey $key_file \
+    -name $prefix \
+    -passin pass: \
+    -passout pass: \
+    -out $pkcs12_file
+fi
+
 # Delete CSR and EXT file
 rm -f $csr_file $ext_file
 
 # Display the generated certificate
-printf "\n====> Displaying the generated certificate\n"
+printf "\n=====> Displaying the generated certificate\n"
 
 if [ -f "$crt_file" ]; then
   openssl x509 -noout -text -in $crt_file
@@ -204,12 +252,15 @@ fi
 
 cat <<EOL >&1
 
-=====> Done! 
-The certificate for "$opt_cn" is in "$crt_file"
+======> Done! 
+A self-signed certificate for "$opt_cn" is created as follows:
+
+  CRT: $crt_file
+  KEY: $key_file 
+  $(if $opt_pkcs12; then echo "PKCS12: $pkcs12_file"; else echo ""; fi)
+
 Please re-confirm the generated certificate information above before you use it.
 
-Thanks, and enjoy your security!
+Happy security!
 
 EOL
-
-
