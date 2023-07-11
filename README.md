@@ -4,10 +4,10 @@ Ansible playbook to create a self-signed root CA and default TLS server certific
 ## Description
 This playbook deploys a set of private self-signed root CA artifacts to a non-dockered NON-PRODUCTION server and issue a general TLS server certificate for building SSL/TLS environment. The format is PEM, which you can change to other format (DES, EC2) if you are familiar with Ansible.
 
-## How to Create Private CA
+## How to Create A Private CA
 1. Install ansible on your host (or Ansible "master" server)
 1. Clone the repo by `git clone https://github.com/elasticsatch/private-ca.git`
-1. Modify configurations in hosts or `roles/ca/vars/main.yml`. Available variables can be found in `roles/ca/defaults/main.yml`.
+1. Modify configurations in hosts or `roles/ca/vars/main.yml`. Variables available can be found in `roles/ca/defaults/main.yml`.
 1. Execute `ansible-playbook --ask-become-pass site.yml`
 
 Once the playbook runs successfully, it generates:
