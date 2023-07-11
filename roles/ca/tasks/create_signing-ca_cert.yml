@@ -1,0 +1,26 @@
+---
+    - name: Generate random password (signing-ca)
+      shell: openssl rand -base64 64 > /tmp/.keypass
+    - name: Create Root CA request
+      shell: |
+        openssl req -new \
+          -config "{{ signing_ca_conf_file }}" \
+          -out "{{ signing_ca_csr_file }}" \
+          -passout file:/tmp/.keypass \
+          -keyout "{{ signing_ca_key_file }}"
+    - name: Remove password from the key file (signing-ca)
+      shell: |
+        mv "{{ signing_ca_key_file }}" "{{ signing_ca_key_file }}.org"
+        openssl rsa \
+          -in "{{ signing_ca_key_file }}.org" \
+          -out "{{ signing_ca_key_file }}" \
+          -passin file:/tmp/.keypass
+    - name: Create Signing CA Certificate
+      shell: |
+        openssl ca \
+          -config "{{ root_ca_conf_file }}" \
+          -in "{{ signing_ca_csr_file }}" \
+          -out "{{ signing_ca_crt_file }}" \
+          -extensions signing_ca_ext
+
+

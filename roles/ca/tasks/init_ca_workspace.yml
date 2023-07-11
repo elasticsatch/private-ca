@@ -1,0 +1,135 @@
+---
+    - name: Install essential packages
+      block:
+        - name: Install on RedHat
+          when: ansible_os_family == "RedHat"
+          yum: 
+            name: [ 'openssl', 'mod_ssl', 'p11-kit', 'ca-certificates' ]
+            state: latest
+            enablerepo: epel
+        - name: Install on Debian
+          when: ansible_os_family == "Debian"
+          apt:
+            name: [ 'openssl', 'p11-kit', 'ca-certificates' ]
+            state: latest
+
+    - name: Delete CA root directory
+      file: 
+        path: "{{ root_ca_dir }}"
+        state: absent
+        force: yes
+
+    - name: Reset trusted CAs
+      block:
+        - name: Create backup dir
+          file: 
+            path: /tmp/cert.bak
+            state: directory
+
+        - name: Find files to remove
+          find:
+            paths: [ "{{ ca_trust_certs_dir }}",
+                     "{{ tls_certs_dir }}",
+                     "{{ tls_private_dir }}" ]
+            patterns: "{{ tls_server_host }}.*"
+            excludes: "(ca-bundle.legacy.crt|README)"
+            use_regex: yes
+            recurse: yes
+            depth: 1
+          register: file_list
+          
+
+        - name: Delete private CA files
+          shell: mv -f "{{ file.path }}" "/tmp/cert.bak/"
+          with_items: "{{ file_list.files }}"
+          loop_control:
+            loop_var: file
+
+        - name: Update database
+          block:
+            - shell: update-ca-trust extract
+              when: ansible_os_family == "RedHat"
+            - shell: update-ca-certificates
+              when: ansible_os_family == "Debian"
+
+    - name: Setup ca group 
+      block:
+        - name: Create group
+          group:
+            name: ca
+            state: present
+        - name: Add users to the group
+          user:
+            name: "{{ ansible_user }}"
+            groups: ca
+            append: yes
+            comment: "CA Operators"
+
+    - name: Recreate CA directories
+      file: 
+        path: "{{ dir_to_make }}"
+        state: directory
+        force: yes
+        owner: root
+        group: ca
+        mode: "0775"
+      with_items:
+        - "{{ home_dir }}"
+        - "{{ root_ca_dir }}"
+        - "{{ root_ca_conf_dir }}"
+        - "{{ root_ca_db_dir }}"
+        - "{{ root_ca_private_dir }}"
+        - "{{ root_ca_certs_dir }}"
+        - "{{ root_ca_temp_dir }}"
+        - "{{ tls_certs_dir }}"
+        - "{{ tls_private_dir }}"
+      loop_control:
+        loop_var: dir_to_make
+
+    - name: make private directory mode to 770
+      file: 
+        path: "{{ root_ca_private_dir }}"
+        mode: "0770"
+        state: directory
+        owner: root
+        group: ca
+        mode: "0664"
+
+    - name: Create db files
+      file: 
+        path: "{{ db_file }}"
+        state: touch
+        force: yes
+        owner: root
+        group: ca
+        mode: "0775"
+      with_items:
+        - "{{ root_ca_db_file }}"
+        - "{{ root_ca_dbattr_file }}"
+      loop_control:
+        loop_var: db_file
+    
+    - name: Create serial files
+      lineinfile:
+        path: "{{ serial_file }}"
+        line: "01"
+        state: present
+        create: yes
+        owner: root
+        group: ca
+        mode: "0775"
+      with_items:
+        - "{{ root_ca_crt_serial_file }}"
+        - "{{ root_ca_crl_number_file }}"
+      loop_control:
+        loop_var: serial_file
+     
+    - name: Send config files
+      template:
+        src: root-ca.conf.j2
+        dest: "{{ root_ca_conf_file }}"
+        owner: root
+        group: ca
+        mode: "0775"
+
+

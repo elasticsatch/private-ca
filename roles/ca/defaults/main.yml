@@ -1,0 +1,91 @@
+################################################################
+# DOMAIN INFO
+################################################################
+# Certificate subject configurations for CA/server certificates.
+ca_country: "JP"
+ca_org: "Satiiza & Co"
+ca_ou: "Undefined"
+ca_state: "Tokyo"
+ca_locality: "Undefined"
+ca_email_address: "satiiza@github.com"
+ca_dc_0: "io"
+ca_dc_1: "satiiza"
+
+# The top-level domain name to be put in the certificate
+ca_domain_name: "{{ ca_dc_1 }}.{{ ca_dc_0 }}"
+
+################################################################
+# DIRECTORIES
+###############################################################
+# A directory where the private CA's root folder will be
+# created. Please note the pre-existing contents
+# are deleted when running playbook. No backslash at tail.
+home_dir: "/etc/pki/CA"
+
+# The folder where all the CA artifacts will be stored.
+# No backslash at tail.
+root_ca_dir: "{{ home_dir }}/{{ ca_domain_name }}"
+
+# Subfolders to store the CA's database, certs and keys.
+# No backslash at tail.
+# used-by:
+#   - tasks/create_root-ca_cert.yml
+#   - tasks/create_ca_dir.yml
+#   - templates/root-ca.conf.j2
+#   - templates/server.conf.j2
+root_ca_conf_dir: "{{ root_ca_dir }}/etc"
+root_ca_db_dir: "{{ root_ca_dir }}/db"
+root_ca_certs_dir: "{{ root_ca_dir }}/certs"
+root_ca_private_dir: "{{ root_ca_dir }}/private"
+root_ca_temp_dir: "{{ root_ca_dir }}/tmp"
+
+################################################################
+# CA CONFIG FILES
+################################################################
+# The openssl config file for the private CA.
+# used-by:
+#   - tasks/create_tls_server_cert.yml
+#   - tasks/create_root-ca_cert.yml
+#   - tasks/create_ca_dir.yml
+#   - tasks/create_signing-ca_cert.yml
+root_ca_conf_file: "{{ root_ca_conf_dir }}/root-ca.conf"
+
+# Openssl files for the private root CA.
+# used-by: 
+#   - tasks/create_ca_dir.yml
+#   - templates/root-ca.conf.j2
+root_ca_db_file: "{{ root_ca_db_dir }}/root-ca.db"
+root_ca_dbattr_file: "{{ root_ca_db_file }}.attr"
+root_ca_crl_number_file: "{{ root_ca_db_dir }}/root-ca.crl.number"
+root_ca_crt_serial_file: "{{ root_ca_db_dir }}/root-ca.crt.serial"
+
+# The key file and certificate file for the private CA.
+# Note the csr file is deleted at the end of the playbook.
+# used-by:
+#   - tasks/install_root_ca_cert.yml
+#   - tasks/create_root-ca_cert.yml
+#   - templates/root-ca.conf.j2
+root_ca_key_file: "{{ root_ca_private_dir }}/root-ca.key"
+root_ca_csr_file: "{{ root_ca_dir }}/root-ca.csr"
+root_ca_crt_file: "{{ root_ca_dir }}/root-ca.crt"
+
+#########################################################################
+# BASE CONFIG FOR TLS/EMAIL CERTS
+#########################################################################
+#
+# A openssl config and cert file for the default TLS server certificate.
+# These are embedded in the server.conf.j2 template.
+# used-by:
+#   - tasks/create_tls_server_cert.yml
+#   - templates/gen-cert.sh.j2
+#   - templates/nginx.conf.j2
+tls_certs_dir: /etc/pki/tls/certs
+tls_private_dir: /etc/pki/tls/private
+
+#########################################################################
+# DOMAIN DEFALULT TLS CERT CONFIG
+#########################################################################
+tls_server_host: "{{ ca_domain_name }}"
+tls_server_host_ip: 127.0.0.1
+tls_server_port: 8443
+

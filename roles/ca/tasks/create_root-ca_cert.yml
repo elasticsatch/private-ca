@@ -1,0 +1,68 @@
+---
+    - name: Set secret file pass
+      set_fact: 
+        password_file: "{{ root_ca_private_dir }}/.secret"
+
+    - name: Create a secret file for Root CA key
+      shell: |
+        openssl rand \
+          -base64 \
+          -out "{{ password_file }}" \
+          128
+
+    - name: Create a CSR for the Root CA certificate
+      shell: |
+        openssl req \
+          -new \
+          -config "{{ root_ca_conf_file }}" \
+          -outform PEM \
+          -out "{{ root_ca_csr_file }}" \
+          -keyout "{{ root_ca_key_file }}" \
+          -passout file:"{{ password_file }}"
+
+    - name: Remove password from the private key
+      shell: |
+        mv -f "{{ root_ca_key_file}}" "{{ root_ca_key_file }}.org"
+        openssl rsa \
+          -in "{{ root_ca_key_file }}.org" \
+          -out "{{ root_ca_key_file }}" \
+          -passin file:"{{ password_file }}"
+        chmod 750 "{{ root_ca_key_file }}"
+
+    - name: Self-sign the Root CA CSR
+      shell: |
+        openssl ca \
+          -selfsign \
+          -batch \
+          -config "{{ root_ca_conf_file }}" \
+          -in "{{ root_ca_csr_file }}" \
+          -out "{{ root_ca_crt_file }}" \
+          -extensions ca_ext
+
+    - name: View the created Root CA certificate
+      shell: |
+        openssl x509 \
+          -noout \
+          -text \
+          -in "{{ root_ca_crt_file }}"
+        
+    - name: Remove intermediate files
+      file:
+        path: "{{ remove_file }}"
+        state: absent
+        force: yes
+      with_items:
+        - "{{ password_file }}"
+        - "{{ root_ca_key_file }}.org"
+        - "{{ root_ca_csr_file }}"
+      loop_control:
+        loop_var: remove_file
+   
+    - name: Deploy cert generator shell (gen-cert.sh)
+      template:
+        src: gen-cert.sh.j2
+        dest: "{{ root_ca_dir }}/gen-cert.sh"
+        owner: root
+        group: ca
+        mode: 750
+

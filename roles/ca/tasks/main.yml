@@ -1,0 +1,10 @@
+---
+    - name: Include sub-tasks
+      include_tasks: "{{ item }}"
+      with_items:
+        - init_ca_workspace.yml
+        - create_root-ca_cert.yml
+        - create_tls_server_cert.yml
+        - install_root_ca_cert.yml
+        - verify_tls_cert.yml
+

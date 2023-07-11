@@ -1,0 +1,23 @@
+---
+    - name: Install and trust generated CA certificate (Debian)
+      when: ansible_os_family == "Debian"
+      block:
+        - copy:
+            remote_src: yes
+            src: "{{ root_ca_crt_file }}"
+            dest: "{{ ca_trust_certs_dir }}/{{ ca_domain_name }}.crt"
+            force: yes
+        - shell: update-ca-certificates
+          become: yes
+           
+    - name: Install and trust generated CA certificate (RedHat)
+      when: ansible_os_family == "RedHat"
+      block:
+        - copy:
+            remote_src: yes
+            src: "{{ root_ca_crt_file }}"
+            dest: "{{ ca_trust_certs_dir }}/{{ ca_domain_name }}.crt"
+            force: yes
+        - shell: update-ca-trust
+          become: yes
+

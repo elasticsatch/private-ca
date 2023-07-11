@@ -1,0 +1,82 @@
+HOME                    = {{ root_ca_dir }}
+RANDFILE                = {{ root_ca_private_dir }}/.rnd
+
+####################################################################
+[ ca ]
+default_ca              = CA_default
+
+[ CA_default ]
+certificate             = {{ root_ca_crt_file }} 
+private_key             = {{ root_ca_key_file }}
+new_certs_dir           = {{ root_ca_certs_dir }}
+serial                  = {{ root_ca_crt_serial_file }}
+crlnumber               = {{ root_ca_crl_number_file }}
+database                = {{ root_ca_db_file }}
+
+policy                  = policy_match
+prompt                  = no
+unique_subject          = no
+default_days            = 3652
+default_crl_days        = 30
+default_md              = sha256
+
+preserve                = no
+email_in_dn             = no
+x509_extensions         = ca_ext
+crl_extensions          = crt_ext
+# copy_extensions         = copy
+
+####################################################################
+[ req ]
+default_bits            = 4096
+default_keyfile         = {{ root_ca_key_file }}
+distinguished_name      = ca_distinguished_name
+utf8                    = yes
+string_mask             = utf8only
+prompt                  = no
+x509_extensions         = ca_ext
+
+####################################################################
+[ ca_distinguished_name ]
+0.domainComponent       = "{{ ca_dc_0 }}"
+1.domainComponent       = "{{ ca_dc_1 }}"
+organizationName        = "{{ ca_org }}"
+organizationalUnitName  = "{{ ca_ou }}""
+stateOrProvinceName     = "{{ ca_state }}"
+localityName            = "{{ ca_locality }}"
+commonName              = "{{ ca_org }} Root CA"
+countryName             = "{{ ca_country }}"
+
+####################################################################
+[ ca_ext ]
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid, issuer
+basicConstraints       = CA:true
+keyUsage               = keyCertSign, cRLSign
+
+####################################################################
+[ crl_ext ]
+authorityKeyIdentifier  = keyid:always
+
+####################################################################
+[ policy_minimal ]
+countryName            = optional
+stateOrProvinceName    = optional
+localityName           = optional
+organizationName       = optional
+organizationalUnitName = optional
+commonName             = supplied
+emailAddress           = optional
+
+####################################################################
+[ policy_match ]
+commonName             = supplied
+countryName            = match
+organizationName       = match
+stateOrProvinceName    = match
+localityName           = match
+organizationName       = match
+organizationalUnitName = optional
+emailAddress           = optional
+
+

@@ -1,0 +1,215 @@
+#!/bin/bash
+program=$(basename $0)
+
+printUsage() {
+  cat << EOF
+
+  $program
+    Generate a Server Certificate PEM file using Self-signed CA
+
+  Usage: 
+    $program -c <name> [-i] [-p <prefix>] [-o <dir>]
+
+  Options:
+    -c --common-name <name>   Common Name (CN) entry put in the CSR/CERT files.
+    -p --prefix <prefix>      Prefix for the output file name (e.g. "-p server" will produce "server.crt")
+                              when omitted common-name will be used.
+    -o --crtout <dir>         A directory the .csr file to be out. 
+                              When omitted, CA's default folders will be used.
+    -k --keyout <dir>         A directory the .key file to be out. 
+                              When omitted, CA's default folders will be used.
+    -m --multi-domain         Enable multi-domain SAN (*.<common-name>)
+    -i --interactive          Display prompt at important steps
+    -h --help                 Show this message.
+
+EOF
+}
+
+exit1() {
+  if [ ! -z "$1" ]; then printf "\e[31m\nERROR: $1\n" >&2; fi
+  tput init
+  printUsage >&2
+exit 1
+}
+
+getDN() {
+  readonly country="{{ ca_country }}"
+  readonly state="{{ ca_state }}"
+  readonly loc="{{ ca_locality }}"
+  readonly org="{{ ca_org }}"
+  readonly ou="{{ ca_ou }}"
+
+  readonly dc=($(echo $1 | sed -e "s|\.| |g"))
+  {{ 'readonly dc_len=${#dc[*]}' }}
+
+  for ((i = dc_len - 1; i > 1; i--)); do
+    dc_param="/DC=${dc[i]}$dc_param"
+  done
+
+  echo "$dc_param/CN=$opt_cn/O=$org/OU=$ou/ST=$state/L=$loc/C=$country" 
+}
+
+# Move to where the shell is (CA's root folder)
+cd $(dirname $0)
+
+## ANALYZE OPTIONS ##
+opt_interactive=false
+opt_multidomain=false
+
+opt=$(getopt -o c:p:o:k:imh -l common-name:prefix:crtout:keyout:interactive,multi-domain,help, -- "$@" \
+    | sed -e "s|^ *||g")
+eval set -- "$opt"
+
+# Parse options with getopt (not getops)
+while true
+do
+  case $1 in
+    -c | --common-name)
+      opt_cn=$2
+      shift 2 ;;
+    -p | --prefix)
+      opt_prefix=$2
+      shift 2 ;;
+    -o | --crtout)
+      opt_crt_dir=$(echo $2 | sed -e "s|/$||g")
+      shift 2 ;;
+    -k | --keyout) 
+      opt_key_dir=$(echo $2 | sed -e "s|/$||g")
+      shift 2 ;;
+    -i | --interactive)
+      opt_interactive=true
+      shift ;;
+    -m | --multi-domain)
+      opt_multidomain=true
+      shift ;;
+    -h | --help)
+      printUsage; exit 0;;
+    --)
+      shift; break ;;
+    *)
+      exit1 "invalid option $1" ;;
+  esac
+done
+
+# Exit if common name is not sett
+if [ -z $opt_cn ]; then 
+  exit1 "common name must be specified. Aborting."
+fi
+
+## SET FILE PATHS ##
+# The file name will be prefix + extension (e.g. .crt) if -p is specified.
+# Otherwise common name will be it, with replacing start to underscore.
+
+readonly prefix=${opt_prefix:-$(echo $opt_cn | sed -e "s|*|_|g")}
+
+readonly crt_file="${opt_crt_dir:-$(pwd)/certs}/${prefix}.crt"
+readonly key_file="${opt_key_dir:-$(pwd)/private}/${prefix}.key"
+readonly keypass_file="$(pwd)/private/${prefix}.keypass"
+readonly csr_file="$(pwd)/tmp/${prefix}.csr"
+readonly ext_file="$(pwd)/tmp/${prefix}.ext"
+
+set
+
+if [[ $opt_interactive ]]; then
+  cat <<EOL >&1
+
+Please confirm the following files will be created either temporarily or permanently.
+
+  CERT: $crt_file
+  KEY: $key_file 
+
+EOL
+  read -p "Press Enter to continue (Ctrl-C to abort):"
+fi
+
+## OPENSSL OPERATIONS ##
+
+# Generate random password
+printf "\n=> Create random password ..\n"
+openssl rand -base64 128 > $keypass_file
+chmod 600 $keypass_file
+
+# Generate CSR
+printf "\n==> Generate a server certificate request for $opt_cn"
+openssl req \
+  -newkey rsa:2048 \
+  -subj "$(getDN $opt_cn)" \
+  -out $csr_file \
+  -keyout $key_file \
+  -passout file:$keypass_file \
+  $(if [[ $opt_interactive ]]; then echo -batch; fi)
+
+if [[ $? != 0 ]]; then 
+  echo "Error while generating CSR. Aborting." >&2
+  exit 1; 
+fi
+
+# Remove password from the key
+readonly key_tmp_file="${key_file}.tmp"
+mv -f "$key_file" "$key_tmp_file" && \
+  openssl rsa \
+    -in  $key_tmp_file \
+    -out $key_file \
+    -passin file:$keypass_file && \
+  chmod 600 $key_file
+
+if [[ $? != 0 ]]; then exit 1; fi
+
+# Remove secret files
+rm -f $key_tmp_file $keypass_file
+
+if [[ $? != 0 ]]; then exit 1; fi
+
+# Generate x509 v3 extension config
+cat <<EOL > $ext_file
+[ user_cert ]
+basicConstraints = CA:false
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always,issuer:always
+keyUsage = critical, digitalSignature, keyEncipherment, nonRepudiation
+extendedKeyUsage = serverAuth, clientAuth
+subjectAltName = @san
+
+[ san ]
+IP.0  = 127.0.0.1
+DNS.0 = localhost
+DNS.1 = $opt_cn
+$(if "$opt_multidomain"; then echo "DNS.2 = *.$opt_cn"; fi)
+EOL
+
+# Sign the CSR
+printf "\n===> Signing the CSR ..\n"
+openssl ca \
+  -config "{{ root_ca_conf_file }}" \
+  -cert "{{ root_ca_crt_file }}" \
+  -policy policy_match \
+  -in $csr_file \
+  -extfile $ext_file \
+  -extensions user_cert \
+  -out $crt_file \
+  $(if [[ $opt_interactive ]]; then echo -batch; fi)
+
+if [[ $? != 0 ]]; then exit 1; fi
+
+# Delete CSR and EXT file
+rm -f $csr_file $ext_file
+
+# Display the generated certificate
+printf "\n====> Displaying the generated certificate\n"
+
+if [ -f "$crt_file" ]; then
+  openssl x509 -noout -text -in $crt_file
+  if [ $? != 0 ]; then exit 1; fi
+fi
+
+cat <<EOL >&1
+
+=====> Done! 
+The certificate for "$opt_cn" is in "$crt_file"
+Please re-confirm the generated certificate information above before you use it.
+
+Thanks, and enjoy your security!
+
+EOL
+
+

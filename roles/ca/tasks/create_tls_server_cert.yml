@@ -1,0 +1,10 @@
+---
+    - name: Generate TLS server certificate
+      shell: |
+        ./gen-cert.sh \
+            -c "{{ tls_server_host }}" \
+            -o "{{ tls_certs_dir }}" \
+            -k "{{ tls_private_dir }}" \
+            -m
+      args:
+        chdir: "{{ root_ca_dir }}"
