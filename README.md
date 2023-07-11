@@ -6,7 +6,7 @@ This playbook deploys a set of private self-signed root CA artifacts to a non-do
 
 ## How to Create Private CA
 1. Install ansible on your host (or Ansible "master" server)
-1. Clone the repo by `git clone https://github.com/satiiza/private-ca.git`
+1. Clone the repo by `git clone https://github.com/elasticsatch/private-ca.git`
 1. Modify configurations in hosts or `roles/ca/vars/main.yml`. Available variables can be found in `roles/ca/defaults/main.yml`.
 1. Execute `ansible-playbook --ask-become-pass site.yml`
 
