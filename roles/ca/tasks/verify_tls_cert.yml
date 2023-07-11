@@ -13,12 +13,12 @@
     - name: Install nginx
       when: not nginx_installed
       block:
-        - name: Install epel repository
-          yum: name=epel-release state=installed
-          when: ansible_os_family == "RedHat"
+#        - name: Install epel repository
+#          yum: name=epel-release state=installed
+#          when: ansible_os_family == "RedHat"
         - name: Install nginx
           package: name=nginx state=installed
-        
+    
     - name: Disable ipv6 port bind directive in /etc/nginx/nginx.conf 
       lineinfile:
         path: /etc/nginx/nginx.conf
