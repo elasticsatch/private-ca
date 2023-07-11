@@ -3,13 +3,13 @@
 ################################################################
 # Certificate subject configurations for CA/server certificates.
 ca_country: "JP"
-ca_org: "Satiiza & Co"
+ca_org: "Elasticsatch"
 ca_ou: "Undefined"
 ca_state: "Tokyo"
 ca_locality: "Undefined"
-ca_email_address: "satiiza@github.com"
-ca_dc_0: "io"
-ca_dc_1: "satiiza"
+ca_email_address: "satoshi@elasticsatch.tokyo"
+ca_dc_0: "tokyo"
+ca_dc_1: "elasticsatch"
 
 # The top-level domain name to be put in the certificate
 ca_domain_name: "{{ ca_dc_1 }}.{{ ca_dc_0 }}"
